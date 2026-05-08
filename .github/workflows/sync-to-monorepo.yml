@@ -1,0 +1,72 @@
+name: Sync to Monorepo
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+
+jobs:
+  guard:
+    name: Check for sync loop
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - id: check
+        run: |
+          MSG=$(git log -1 --format='%s')
+          if echo "$MSG" | grep -qE '^sync: from monorepo'; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "Skipping — this commit came from the monorepo sync."
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+  sync:
+    name: Push backend → monorepo/backend/
+    needs: guard
+    if: needs.guard.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout aisle-backend
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Clone monorepo
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+        run: |
+          gh auth setup-git
+          git clone https://github.com/slaughterhectic/Aisle.git /tmp/mono
+          cd /tmp/mono
+          git checkout ${{ github.ref_name }} 2>/dev/null || git checkout -b ${{ github.ref_name }}
+
+      - name: Sync files into monorepo backend/
+        run: |
+          rsync -a --delete \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='dist' \
+            --exclude='coverage' \
+            --exclude='.github' \
+            ./ /tmp/mono/backend/
+
+      - name: Commit and push to monorepo
+        working-directory: /tmp/mono
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes to sync to monorepo."
+          else
+            git commit -m "sync: from aisle-backend ${GITHUB_SHA::7} [${{ github.ref_name }}]"
+            git push origin ${{ github.ref_name }}
+          fi
