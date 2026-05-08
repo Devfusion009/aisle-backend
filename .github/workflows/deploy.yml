@@ -1,0 +1,70 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './package-lock.json'
+
+      - name: Install Dependencies & Build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Zip Build Artifacts
+        run: |
+          zip -r backend-build.zip dist package.json package-lock.json
+
+      - name: Copy Files to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.BE_EC2_HOST }}
+          username: ${{ secrets.BE_EC2_USER }}
+          key: ${{ secrets.BE_EC2_SSH_KEY }}
+          source: "./backend-build.zip"
+          target: "/home/${{ secrets.BE_EC2_USER }}/versa-backend-temp"
+
+      - name: Deploy on EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.BE_EC2_HOST }}
+          username: ${{ secrets.BE_EC2_USER }}
+          key: ${{ secrets.BE_EC2_SSH_KEY }}
+          script: |
+            mkdir -p /home/${{ secrets.BE_EC2_USER }}/versa-backend
+            cd /home/${{ secrets.BE_EC2_USER }}/versa-backend
+
+            mv /home/${{ secrets.BE_EC2_USER }}/versa-backend-temp/backend-build.zip .
+            rm -rf /home/${{ secrets.BE_EC2_USER }}/versa-backend-temp
+            unzip -o backend-build.zip
+            rm backend-build.zip
+
+            if [ ! -f /swapfile ]; then
+              sudo fallocate -l 2G /swapfile
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
+              sudo swapon /swapfile
+            fi
+
+            npm ci --omit=dev
+
+            pm2 describe versa-api > /dev/null
+            if [ $? -eq 0 ]; then
+              pm2 restart versa-api
+            else
+              pm2 start dist/main.js --name "versa-api" --cwd /home/${{ secrets.BE_EC2_USER }}/versa-backend
+            fi
+            pm2 save
