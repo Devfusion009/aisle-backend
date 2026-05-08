@@ -1,0 +1,23 @@
+# Environment files
+.env
+.env.local
+.env.*
+
+# Dependencies
+node_modules
+
+# Build output
+dist
+coverage
+
+# IDE
+.vscode
+.idea
+
+# Logs
+*.log
+logs/
+
+# Misc
+*.pem
+.DS_Store
