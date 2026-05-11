@@ -1,12 +1,13 @@
-import { IsString, IsEmail, IsOptional, MaxLength, MinLength, Matches } from 'class-validator';
+import { IsString, IsEmail, IsOptional, IsNotEmpty, MaxLength, MinLength, Matches } from 'class-validator';
 import { PASSWORD_REGEX, PASSWORD_VALIDATION_MESSAGE } from '../../../common/utils/password.util';
 
 /**
  * DTO for submitting an access request (public, no auth needed).
  *
- * Public callers identify the target tenant by its `slug`, never by UUID:
- * exposing tenant UUIDs to unauthenticated traffic enables tenant
- * enumeration. The server resolves slug → UUID internally.
+ * Public callers identify the target tenant by its `slug` or by its display
+ * `newTenantName`, never by UUID: exposing tenant UUIDs to unauthenticated
+ * traffic enables tenant enumeration. The server resolves slug/name → UUID
+ * internally.
  */
 export class CreateAccessRequestDto {
   @IsString()
@@ -29,11 +30,15 @@ export class CreateAccessRequestDto {
   @Matches(/^[a-z0-9-]+$/, { message: 'tenantSlug must be lowercase alphanumeric with dashes' })
   tenantSlug?: string;
 
-  /** If requesting a new tenant */
-  @IsOptional()
+  /**
+   * Organization name the user typed in the public form. Required.
+   * Service layer matches this case-insensitively against existing tenants.
+   */
   @IsString()
+  @IsNotEmpty()
+  @MinLength(2)
   @MaxLength(255)
-  newTenantName?: string;
+  newTenantName: string;
 }
 
 /**
