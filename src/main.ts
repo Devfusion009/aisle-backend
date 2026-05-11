@@ -77,7 +77,7 @@ async function bootstrap() {
   // Start the server
   await app.listen(port);
 
-  logger.log(`🚀 Application is running on: http://localhost:${port}`);
+  logger.log(`Application is running on: http://localhost:${port}`);
   logger.log(`📡 Environment: ${nodeEnv}`);
   logger.log(`✅ Health check: http://localhost:${port}/health`);
   logger.log(`📚 API Base: http://localhost:${port}/api`);
