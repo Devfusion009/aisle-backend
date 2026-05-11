@@ -29,19 +29,40 @@ export class AccessRequestsService {
   /**
    * Submit a new access request (public, no auth).
    *
-   * The public flow references tenants by `slug`, not by UUID — UUIDs are
-   * never exposed to unauthenticated callers, which would let attackers
+   * The public flow references tenants by `slug` or by `newTenantName`
+   * (the human-friendly organization name typed in the form). UUIDs are
+   * never accepted from public callers — exposing them would let attackers
    * enumerate the tenant table.
+   *
+   * Required: `newTenantName` (the organization the requester wants to join).
+   * The service matches it case-insensitively against the tenant table and
+   * routes the request to that tenant's admins. If no tenant matches, the
+   * request is rejected — we do not auto-create tenants from the public
+   * form.
    */
   async create(dto: CreateAccessRequestDto): Promise<AccessRequestResponse> {
-    // Resolve tenant by slug (public callers do not get to pass UUIDs)
     let resolvedTenantId: string | null = null;
+
+    // Slug takes precedence when provided (used by internal/programmatic callers)
     if (dto.tenantSlug) {
       const tenant = await this.tenantRepo.findOne({
         where: { slug: dto.tenantSlug, isActive: true },
       });
       if (!tenant || tenant.name === 'System Administration') {
-        throw new NotFoundException('The selected organization was not found');
+        throw new NotFoundException("We couldn't find that organization. Please verify the name with your admin.");
+      }
+      resolvedTenantId = tenant.id;
+    } else {
+      // Match the typed organization name against existing tenants (case-insensitive)
+      const trimmedName = dto.newTenantName.trim();
+      const tenant = await this.tenantRepo
+        .createQueryBuilder('tenant')
+        .where('LOWER(tenant.name) = LOWER(:name)', { name: trimmedName })
+        .andWhere('tenant.isActive = :active', { active: true })
+        .getOne();
+
+      if (!tenant || tenant.name === 'System Administration') {
+        throw new NotFoundException("We couldn't find that organization. Please verify the name with your admin.");
       }
       resolvedTenantId = tenant.id;
     }
@@ -59,7 +80,7 @@ export class AccessRequestsService {
       email: dto.email,
       message: dto.message || null,
       tenantId: resolvedTenantId,
-      newTenantName: dto.newTenantName || null,
+      newTenantName: null,
       status: AccessRequestStatus.PENDING,
     });
 
