@@ -41,6 +41,11 @@ export class PlansService implements OnModuleInit {
 
   async onModuleInit() {
     await this.refreshPlansCache();
+    const hasPlans = Object.keys(PLAN_LIMITS).length > 0;
+    if (!hasPlans) {
+      await this.seedDefaultPlans();
+      await this.refreshPlansCache();
+    }
   }
 
   /**
