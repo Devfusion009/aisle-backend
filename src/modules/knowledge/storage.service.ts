@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   S3Client,
@@ -6,8 +6,6 @@ import {
   GetObjectCommand,
   DeleteObjectCommand,
   HeadObjectCommand,
-  HeadBucketCommand,
-  CreateBucketCommand,
 } from '@aws-sdk/client-s3';
 import { createHash } from 'crypto';
 import Redis from 'ioredis';
@@ -38,7 +36,7 @@ const CACHE_TTL_SECONDS = 24 * 60 * 60; // 24 h
  * See `downloadFileCached()`.
  */
 @Injectable()
-export class StorageService implements OnModuleInit, OnModuleDestroy {
+export class StorageService implements OnModuleDestroy {
   private readonly logger = new Logger(StorageService.name);
   private readonly s3Client: S3Client;
   private readonly bucket: string;
@@ -79,15 +77,6 @@ export class StorageService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(`StorageService Redis cache error: ${err.message}`);
     });
     return client;
-  }
-
-  async onModuleInit() {
-    try {
-      await this.s3Client.send(new HeadBucketCommand({ Bucket: this.bucket }));
-    } catch {
-      await this.s3Client.send(new CreateBucketCommand({ Bucket: this.bucket }));
-      this.logger.log(`Created S3 bucket: ${this.bucket}`);
-    }
   }
 
   async onModuleDestroy() {
